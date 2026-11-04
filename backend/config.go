@@ -2,30 +2,56 @@ package main
 
 import (
 	"fmt"
+	"maps"
 	"net/http"
 	"os"
-	"path/filepath"
-	"sort"
 	"strings"
 )
 
-var publicConfigKeys = map[string]bool{"TENCENTCLOUD_REGION": true}
+const ocrRegionKey = "TENCENTCLOUD_REGION"
+
+type ocrCredentialStore interface {
+	read() (map[string]string, error)
+	write(map[string]string) error
+}
+
+func (a *server) reloadOCR() error {
+	cfg, err := a.s.settings(nil)
+	if err != nil {
+		return err
+	}
+	values := map[string]string{ocrRegionKey: str(cfg, "ocr_region")}
+	for key := range ocrEnvKeys {
+		if key != ocrRegionKey {
+			values[key] = a.ocrSecrets[key]
+		}
+		if a.configLocked[key] {
+			values[key] = strings.TrimSpace(os.Getenv(key))
+		}
+	}
+	a.s.ocr = newTencentOCR(values)
+	return nil
+}
 
 func (a *server) configStatus() Record {
 	values, present, locked := Record{}, Record{}, Record{}
 	for k := range ocrEnvKeys {
-		present[k] = os.Getenv(k) != ""
-		locked[k] = a.configLocked[k]
-		if publicConfigKeys[k] {
-			values[k] = os.Getenv(k)
+		present[k] = a.ocrSecrets[k] != ""
+		if a.configLocked[k] {
+			present[k] = strings.TrimSpace(os.Getenv(k)) != ""
 		}
+		locked[k] = a.configLocked[k]
 	}
-	return Record{"values": values, "configured": present, "locked": locked, "editable": a.envFile != ""}
+	if a.s.ocr != nil {
+		values[ocrRegionKey] = a.s.ocr.region
+		present[ocrRegionKey] = a.s.ocr.region != ""
+	}
+	return Record{"values": values, "configured": present, "locked": locked, "editable": a.credentials != nil}
 }
 
 func (a *server) saveConfig(input Record) error {
-	if a.envFile == "" {
-		return fmt.Errorf("本次启动已禁用配置文件，无法保存设置")
+	if a.credentials == nil {
+		return fmt.Errorf("此環境無法保存 Windows OCR 憑據")
 	}
 	updates, _ := input["values"].(map[string]any)
 	if record, ok := input["values"].(Record); ok {
@@ -42,13 +68,13 @@ func (a *server) saveConfig(input Record) error {
 		}
 		value = strings.TrimSpace(value)
 		// An empty password field means keep; clearing is an explicit action.
-		if value == "" && !publicConfigKeys[k] {
+		if value == "" && k != ocrRegionKey {
 			continue
 		}
 		clean[k] = value
 	}
 	for _, k := range texts(input, "clear") {
-		if !ocrEnvKeys[k] || publicConfigKeys[k] {
+		if !ocrEnvKeys[k] || k == ocrRegionKey {
 			return fmt.Errorf("清除配置项无效")
 		}
 		clean[k] = ""
@@ -58,64 +84,40 @@ func (a *server) saveConfig(input Record) error {
 			return fmt.Errorf("%s 由系统环境变量管理，请在系统中修改", k)
 		}
 	}
-	path, e := filepath.Abs(a.envFile)
-	if e != nil {
-		return fmt.Errorf("配置路径无效")
+	previous, err := a.credentials.read()
+	if err != nil {
+		return err
 	}
-	original, e := os.ReadFile(path)
-	if e != nil && !os.IsNotExist(e) {
-		return fmt.Errorf("配置文件无法读取")
-	}
-	if len(original) > 1<<20 {
-		return fmt.Errorf("配置文件过大")
-	}
-	if info, e := os.Lstat(path); e == nil && (!info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0) {
-		return fmt.Errorf("配置文件须为普通文件")
-	}
-	if _, e := parseEnv(strings.NewReader(string(original))); e != nil {
-		return e
-	}
-	lines := []string{}
-	for _, line := range strings.Split(strings.TrimPrefix(string(original), "\ufeff"), "\n") {
-		key, _, has := strings.Cut(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "export ")), "=")
-		if _, replace := clean[strings.TrimSpace(key)]; has && replace {
+	next := make(map[string]string)
+	maps.Copy(next, previous)
+	for k, value := range clean {
+		if k == ocrRegionKey {
 			continue
 		}
-		lines = append(lines, strings.TrimSuffix(line, "\r"))
-	}
-	keys := []string{}
-	for k := range clean {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		lines = append(lines, k+"=\""+clean[k]+"\"")
-	}
-	tmp, e := os.CreateTemp(filepath.Dir(path), ".settings-*.tmp")
-	if e != nil {
-		return fmt.Errorf("配置目录不可写，请将客户端放在可写目录")
-	}
-	name := tmp.Name()
-	defer os.Remove(name)
-	if e = tmp.Chmod(0600); e == nil {
-		_, e = tmp.WriteString(strings.Join(lines, "\n"))
-	}
-	if closeErr := tmp.Close(); e == nil {
-		e = closeErr
-	}
-	if e != nil {
-		return fmt.Errorf("配置保存失败")
-	}
-	if e = os.Rename(name, path); e != nil {
-		return fmt.Errorf("配置替换失败，请检查文件是否被占用")
-	}
-	for _, k := range keys {
-		if e = os.Setenv(k, clean[k]); e != nil {
-			return fmt.Errorf("配置已保存，请重新启动客户端")
+		if value == "" {
+			delete(next, k)
+		} else {
+			next[k] = value
 		}
 	}
-	a.s.ocr = ocrFromEnv()
-	return nil
+	changed := !maps.Equal(previous, next)
+	if changed {
+		if err = a.credentials.write(next); err != nil {
+			return err
+		}
+	}
+	if region, ok := clean[ocrRegionKey]; ok {
+		if _, err = a.s.settings(Record{"ocr_region": region}); err != nil {
+			if changed {
+				if rollback := a.credentials.write(previous); rollback != nil {
+					return fmt.Errorf("區域保存失敗，且無法恢復原有 Windows OCR 憑據：%w", rollback)
+				}
+			}
+			return fmt.Errorf("無法保存 OCR 服務區域：%w", err)
+		}
+	}
+	a.ocrSecrets = next
+	return a.reloadOCR()
 }
 
 func (a *server) configRoutes(mux *http.ServeMux) {

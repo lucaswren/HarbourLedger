@@ -25,6 +25,8 @@ type server struct {
 	assets, font string
 	envFile      string
 	configLocked map[string]bool
+	credentials  ocrCredentialStore
+	ocrSecrets   map[string]string
 	jobMu        sync.Mutex
 	rebuildJob   Record
 }

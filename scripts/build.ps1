@@ -42,7 +42,7 @@ try {
     Copy-Item -LiteralPath frontend/dist -Destination "$bundleDir/frontend" -Recurse -Force
     Copy-Item -LiteralPath assets/fonts/NotoSansSC-Regular.ttf, assets/fonts/OFL.txt -Destination "$bundleDir/assets/fonts" -Force
     Copy-Item -LiteralPath docs/Windows客戶端使用說明.txt -Destination "$bundleDir/使用說明.txt" -Force
-    Copy-Item -LiteralPath .env.example, LICENSE, NOTICE -Destination $bundleDir -Force
+    Copy-Item -LiteralPath LICENSE, NOTICE -Destination $bundleDir -Force
     New-Item -ItemType Directory -Force "$bundleDir/licenses" | Out-Null
     Copy-Item -LiteralPath third_party/pdf/LICENSE -Destination "$bundleDir/licenses/pdf-BSD.txt" -Force
     Copy-Item -LiteralPath third_party/pdf/LICENSE-font-metrics -Destination "$bundleDir/licenses/font-metrics-MIT.txt" -Force
@@ -70,7 +70,7 @@ try {
     Write-Host "构建完成：$bundleDir"
     # Only program files enter the distributable archive, even after the user starts using this folder.
     $archive = Join-Path $projectRoot 'dist/港賬通-Windows免安裝.zip'
-    Compress-Archive -LiteralPath "$bundleDir/港賬通.exe", "$bundleDir/frontend", "$bundleDir/assets", "$bundleDir/licenses", "$bundleDir/.env.example", "$bundleDir/使用說明.txt", "$bundleDir/LICENSE", "$bundleDir/NOTICE" -DestinationPath $archive -Force
+    Compress-Archive -LiteralPath "$bundleDir/港賬通.exe", "$bundleDir/frontend", "$bundleDir/assets", "$bundleDir/licenses", "$bundleDir/使用說明.txt", "$bundleDir/LICENSE", "$bundleDir/NOTICE" -DestinationPath $archive -Force
     Copy-Item -LiteralPath "$bundleDir/港賬通.exe" -Destination (Join-Path $projectRoot '港賬通.exe') -Force
     Write-Host "免安裝壓縮包：$archive（不包含帳簿、原件、密鑰或視窗快取）"
 } finally {

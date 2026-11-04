@@ -31,7 +31,7 @@ func main() {
 	font := flag.String("font", "assets/fonts/NotoSansSC-Regular.ttf", "PDF中文字体")
 	organize := flag.Bool("organize-documents", false, "按内容整理凭证、自动命名并清理重复副本，然后退出")
 	restore := flag.String("restore-backup", "", "將備份ZIP恢復至空白帳簿後退出")
-	envFile := flag.String("env-file", ".env", "可選接口配置文件；空值禁用")
+	envFile := flag.String("env-file", ".env", "舊版 OCR 設定覆寫檔案（唯讀）")
 	flag.Parse()
 	if *desktop {
 		prepareDesktopLog(*root)
@@ -65,8 +65,13 @@ func main() {
 			explicitEnv = true
 		}
 	})
-	if e := loadEnvFile(*envFile, !explicitEnv); e != nil {
-		startupError(*desktop, e)
+	if explicitEnv {
+		if e := loadEnvFile(*envFile, false); e != nil {
+			startupError(*desktop, e)
+		}
+		for key := range ocrEnvKeys {
+			_, configLocked[key] = os.LookupEnv(key)
+		}
 	}
 	host, _, e := net.SplitHostPort(*addr)
 	if e != nil || host != "127.0.0.1" && host != "localhost" && host != "::1" {
@@ -103,8 +108,20 @@ func main() {
 	if e = s.upgradeReviewPolicy(); e != nil {
 		startupError(*desktop, "核验规则升级失败: ", e)
 	}
-	s.ocr = ocrFromEnv()
-	a := &server{s: s, assets: *assets, font: *font, envFile: *envFile, configLocked: configLocked}
+	a := &server{s: s, assets: *assets, font: *font, envFile: *envFile, configLocked: configLocked, credentials: localOCRCredentials()}
+	if a.credentials != nil {
+		a.ocrSecrets, e = a.credentials.read()
+		if e != nil {
+			log.Print(e)
+		} else if !explicitEnv {
+			if err := a.migrateLegacyOCR(*envFile); err != nil {
+				log.Printf("舊 OCR 設定未完成遷移：%v", err)
+			}
+		}
+	}
+	if e = a.reloadOCR(); e != nil {
+		startupError(*desktop, e)
+	}
 	srv := &http.Server{Addr: *addr, Handler: a.routes(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 5 * time.Minute, WriteTimeout: 10 * time.Minute, IdleTimeout: 60 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

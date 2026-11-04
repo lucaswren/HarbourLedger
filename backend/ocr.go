@@ -26,9 +26,8 @@ type TencentOCR struct {
 	endpoint                           string
 }
 
-func ocrFromEnv() *TencentOCR {
-	region := strings.TrimSpace(os.Getenv("TENCENTCLOUD_REGION"))
-	return &TencentOCR{secretID: strings.TrimSpace(os.Getenv("TENCENTCLOUD_SECRET_ID")), secretKey: strings.TrimSpace(os.Getenv("TENCENTCLOUD_SECRET_KEY")), token: strings.TrimSpace(os.Getenv("TENCENTCLOUD_TOKEN")), region: region, client: &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}, endpoint: "https://ocr.tencentcloudapi.com/"}
+func newTencentOCR(values map[string]string) *TencentOCR {
+	return &TencentOCR{secretID: values["TENCENTCLOUD_SECRET_ID"], secretKey: values["TENCENTCLOUD_SECRET_KEY"], token: values["TENCENTCLOUD_TOKEN"], region: values[ocrRegionKey], client: &http.Client{Timeout: 45 * time.Second, CheckRedirect: func(r *http.Request, via []*http.Request) error { return http.ErrUseLastResponse }}, endpoint: "https://ocr.tencentcloudapi.com/"}
 }
 func (c *TencentOCR) configured() bool { return c != nil && c.secretID != "" && c.secretKey != "" }
 func (c *TencentOCR) status() Record {

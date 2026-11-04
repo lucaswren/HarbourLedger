@@ -13,7 +13,7 @@ onMounted(load)
 </script>
 <template>
  <section class="connection-settings">
-  <h2>騰訊 OCR</h2><p class="config-help">密鑰只保存在此電腦，不會顯示已保存內容，也不會隨帳簿備份或發行包分享。</p>
+  <h2>騰訊 OCR</h2><p class="config-help">密鑰保存在目前 Windows 使用者的憑據管理員，不隨帳簿備份。服務區域保存在帳簿，會隨備份恢復。</p>
   <el-alert v-if="error" :title="error" type="error" :closable="false"/>
     <el-form-item v-for="field in ocrFields" :key="field.key" :label="field.label"><div class="secret-line"><el-input v-model="values[field.key]" type="password" show-password autocomplete="new-password" :disabled="busy||state.locked[field.key]||clear.includes(field.key)" :placeholder="state.configured[field.key]?'已配置，留空保留原值':'填寫 '+field.label"/><el-button v-if="state.configured[field.key]&&!state.locked[field.key]" text :type="clear.includes(field.key)?'warning':'danger'" @click="toggleClear(field.key)">{{clear.includes(field.key)?'取消清除':'清除'}}</el-button></div><small v-if="state.locked[field.key]">由系統環境變數管理</small></el-form-item>
     <el-form-item label="服務區域（選填）"><el-input v-model="values.TENCENTCLOUD_REGION" placeholder="例如 ap-hongkong" :disabled="busy||state.locked.TENCENTCLOUD_REGION"/></el-form-item><p class="config-help">只用於掃描發票辨識；文字發票及銀行月結單始終在本地解析。</p>

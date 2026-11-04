@@ -332,6 +332,9 @@ func (a *server) restoreRoute(mux *http.ServeMux) {
 			fail(w, err)
 			return
 		}
+		if err := a.reloadOCR(); err != nil {
+			result["warning"] = "帳簿已恢復，請重新啟動以載入 OCR 區域設定"
+		}
 		sendJSON(w, 200, result)
 	})
 }
