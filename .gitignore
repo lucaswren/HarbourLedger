@@ -1,0 +1,29 @@
+/frontend/node_modules/
+/frontend/dist/
+/bin/
+/*.exe
+/.settings-*.tmp
+/data/
+/build/
+/dist/
+/archive/
+/legacy/portable/
+/private/
+# Private accounting inputs and manually verified real invoices.
+/財務資料/
+/财务资料/
+/assets/verified_invoices.json
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+# These historical notes contain real counterparties, accounts and amounts.
+/docs/會計師問題對照.md
+/docs/憑證命名與功能精簡.md
+/docs/自動關聯與憑證清理.md
+# One-off utilities contain this company's data and local paths.
+/tools/directory-ledger/
+/tools/maintenance/
+*.log
+.env
+.env.*
+!.env.example
